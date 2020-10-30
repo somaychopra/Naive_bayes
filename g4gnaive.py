@@ -3,7 +3,7 @@ import math
 import random 
 import csv 
 
-
+epsilon = 1e-6
 # the categorical class names are changed to numberic data 
 # eg: yes and no encoded to 1 and 0 
 def encode_class(mydata): 
@@ -73,8 +73,8 @@ def MeanAndStdDevForClass(mydata):
 
 # Calculate Gaussian Probability Density Function 
 def calculateGaussianProbability(x, mean, stdev): 
-	expo = math.exp(-(math.pow(x - mean, 2) / (2 * math.pow(stdev, 2)))) 
-	return (1 / (math.sqrt(2 * math.pi) * stdev)) * expo 
+	expo = math.exp(-(math.pow(x - mean, 2) / (2 * math.pow(stdev, 2) + epsilon))) 
+	return (1 / (math.sqrt(2 * math.pi) * stdev + epsilon)) * expo 
 
 
 # Calculate Class Probabilities 
@@ -120,7 +120,7 @@ def accuracy_rate(test, predictions):
 # driver code 
 
 # add the data path in your system 
-filename = r'after_prepoc_temp.csv'
+filename = r'after_prepoc.csv'
 
 
 # load the file and store it in mydata list 
