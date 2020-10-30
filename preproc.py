@@ -25,12 +25,12 @@ fl["location"] = fl["location"].astype('category') # 156 different types of loca
 fl["location"] = fl["location"].cat.codes
 
 fl["death"] = fl["death"].replace(to_replace='[0-9][0-9]*/[0-9][0-9]/[0-9][0-9][0-9][0-9]|[0-9][0-9]*-[0-9][0-9]-[0-9][0-9][0-9][0-9]', value = '1', regex=True)
-fl["death"] = fl["death"].astype('category') # 156 different types of locations
+fl["death"] = fl["death"].astype('category') 
 fl["death"] = fl["death"].cat.codes
 # print(fl["death"][992:1040])
 
 fd = pd.DataFrame()
-# print(fl_location.columns)
+print(fl_location.columns)
 for column in fl_location.columns : 
 	fd[column] = fl_location[column]
 
@@ -39,6 +39,19 @@ for column in fl_country.columns :
 
 for column in ['gender', 'age', 'visiting Wuhan', 'from Wuhan', 'death'] :
 	fd[column] = fl[column]
+# temp = [fd['death'] == 1]
+# print((fd.columns))
+# temp = len(fd.columns)*temp
+# temp =[[row[i] for row in temp] for i in range(len(temp[0]))]
+# temp = temp*fd
+# fd2 = pd.DataFrame(temp, fd.columns)
+
+# temp = []
+# for i in range(len(fd['gender'])) :
+# 	if fd[i]['death'] == 1 :
+# 		exit()
+# 		temp.append[fd[i]]
+
 
 
 print(fd)
