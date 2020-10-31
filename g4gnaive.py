@@ -205,6 +205,26 @@ def berProb(train_data) :
 	logBerProb.append(np.log(p))
 	return logBerProb
 
+def k_fold_cv(train_data):
+	k = 1
+	print("Performing 5 fold cross validation : ")
+	kfold = KFold(5)
+	for train, valid in kfold.split(train_data):
+		i_fold_train = []
+		i_fold_valid = []
+		for i in train:
+			i_fold_train.append(train_data[i])
+		for i in valid:
+			i_fold_valid.append(train_data[i])
+		#i_fold_train = train_data[train]
+		#i_fold_valid = train_data[valid]
+		info = MeanAndStdDevForClass(i_fold_train) 
+		predictions = getPredictions(info, i_fold_valid) 
+		accuracy = accuracy_rate(i_fold_valid, predictions) 
+		print("Accuracy on validation set on",k,"th fold is: ", accuracy)
+		print(predictions)
+		k = k + 1 
+		
 # driver code 
 # add the data path in your system 
 filename = r'after_prepoc.csv'
