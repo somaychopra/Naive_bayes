@@ -30,7 +30,7 @@ fl["death"] = fl["death"].cat.codes
 # print(fl["death"][992:1040])
 
 fd = pd.DataFrame()
-print(fl_location.columns)
+# print(fl_location.columns)
 for column in fl_location.columns : 
 	fd[column] = fl_location[column]
 

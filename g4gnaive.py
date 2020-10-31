@@ -6,8 +6,13 @@ import sklearn
 import sklearn.decomposition
 from sklearn.decomposition import PCA
 import numpy as np
+import sklearn
+from sklearn.model_selection import KFold 
+from sklearn import preprocessing
+from scipy.stats import norm
 
-epsilon = 1e-6
+
+epsilon = 1e-9
 # the categorical class names are changed to numberic data 
 # eg: yes and no encoded to 1 and 0 
 def encode_class(mydata): 
@@ -83,6 +88,8 @@ def calculateGaussianProbability(x, mean, stdev):
 
 def calculateGaussianLogProbability(data, mu, sigma) :
 	# print(2*math.pi*(sigma**2))
+	# if sigma == 0 :
+		# return 0
 	ll = math.log(2*math.pi*(sigma**2) + epsilon)/2 + ((data-mu)**2)/(2 * (sigma**2) + epsilon)
 	return -ll
 
@@ -93,6 +100,8 @@ def calculateClassLogProbabilities(info, logBerProb, test):
 		probabilities[classValue] = 0
 		for i in range(len(classSummaries)): 
 			mean, std_dev = classSummaries[i]
+			# if(std_dev == 0) :
+				# print("Std_Dev = 0; classValue : {}; examples : {}".format(classValue, i))
 			x = test[i]
 			probabilities[classValue] += calculateGaussianLogProbability(x, mean, std_dev)
 		probabilities[classValue] += logBerProb[int(classValue)]
@@ -135,18 +144,19 @@ def normalize_data(train_data, test_data) :
 	test_X_np = test_data_np[:,:-1]
 	test_Y_np = test_data_np[:,-1].reshape((test_data_np.shape[0],1))
 	
-	mean = np.mean(train_X_np, axis=0)
-	std = np.std(train_X_np, axis=0) + epsilon
-	train_X_np = (train_X_np - mean)/std
-	# train_X_np /= std
-	test_X_np = (test_X_np - mean)/std
-	# test_X_np /= std
+	normalizer = preprocessing.Normalizer()
+	train_X_np = normalizer.fit_transform(train_X_np)
+	test_X_np = normalizer.transform(test_X_np)
+	# mean = np.mean(train_X_np, axis=0)
+	# std = np.std(train_X_np, axis=0) + epsilon
+	# train_X_np = (train_X_np - mean)/std
+	# test_X_np = (test_X_np - mean)/std
 	train_data = np.concatenate((train_X_np, train_Y_np), axis=1).tolist()
 	test_data = np.concatenate((test_X_np, test_Y_np), axis=1).tolist()
 
 	return train_data, test_data
 
-def normalize_data_2(data) :
+def normalize_data_full_data(data) :
 	data_np = np.array(data)
 	X_np = data_np[:,:-1]  
 	Y_np = data_np[:,-1].reshape((data_np.shape[0],1))
@@ -176,18 +186,18 @@ def apply_pca(train_data, test_data) :
 	test_X_np = test_data_np[:,:-1]
 	test_Y_np = test_data_np[:,-1].reshape((test_data_np.shape[0],1))
 
-	std = (np.std(train_X_np, axis=0) + epsilon)
+	# std = (np.std(train_X_np, axis=0) + epsilon)
 	# train_X_np /= std
 	# test_X_np /= std
 
 	# pca = PCA()
-	# pca = PCA(n_components=0.95, svd_solver='full')
-	pca = PCA(n_components=5)
+	pca = PCA(n_components=0.95)
+	# pca = PCA(n_components=5)
 	train_X_np_pca = pca.fit_transform(train_X_np)
 	test_X_np_pca = pca.transform(test_X_np)
-	print(test_X_np_pca.shape)
-	print(train_X_np_pca.shape)
-
+	# print(test_X_np_pca.shape)
+	# print(train_X_np_pca.shape)
+	# print(pca.explained_variance_ratio_)
 	train_data = np.concatenate((train_X_np_pca, train_Y_np), axis=1).tolist()
 	test_data = np.concatenate((test_X_np_pca, test_Y_np), axis=1).tolist()
 
@@ -205,10 +215,12 @@ def berProb(train_data) :
 	logBerProb.append(np.log(p))
 	return logBerProb
 
-def k_fold_cv(train_data):
+def k_fold_cv(train_data, pca=False):
 	k = 1
 	print("Performing 5 fold cross validation : ")
-	kfold = KFold(5)
+	kfold = KFold(5, shuffle=True)
+	avg_accuracy = 0
+	avg_accuracy_train = 0
 	for train, valid in kfold.split(train_data):
 		i_fold_train = []
 		i_fold_valid = []
@@ -216,14 +228,31 @@ def k_fold_cv(train_data):
 			i_fold_train.append(train_data[i])
 		for i in valid:
 			i_fold_valid.append(train_data[i])
-		#i_fold_train = train_data[train]
-		#i_fold_valid = train_data[valid]
-		info = MeanAndStdDevForClass(i_fold_train) 
-		predictions = getPredictions(info, i_fold_valid) 
+		# i_fold_train = train_data[train]
+		# i_fold_valid = train_data[valid]
+		i_fold_train, i_fold_valid = normalize_data(i_fold_train, i_fold_valid)
+		if pca :
+			i_fold_train, i_fold_valid = apply_pca(i_fold_train, i_fold_valid)
+			print("Number of features selected : {}".format(len(i_fold_train[0])-1))
+
+
+		info = MeanAndStdDevForClass(i_fold_train)
+		logBerProb = berProb(i_fold_train)
+		predictions_train = getPredictions(info, logBerProb, i_fold_train) 
+		predictions = getPredictions(info, logBerProb, i_fold_valid) 
+		accuracy_train = accuracy_rate(i_fold_train, predictions_train) 
 		accuracy = accuracy_rate(i_fold_valid, predictions) 
-		print("Accuracy on validation set on",k,"th fold is: ", accuracy)
-		print(predictions)
-		k = k + 1 
+		avg_accuracy += accuracy
+		avg_accuracy_train += accuracy_train 
+		print("Accuracy on validation set on",k,"th fold is: ",accuracy)
+		# print("Accuracy on training set on",k,"th fold is: ",accuracy_train)
+		# print(predictions)
+		k = k + 1
+	avg_accuracy /= 5
+	avg_accuracy_train /= 5
+	print("Average Accuracy on validation set on : ",avg_accuracy)
+	print("Average Accuracy on training set on : ",avg_accuracy_train)
+
 		
 # driver code 
 # add the data path in your system 
@@ -239,34 +268,7 @@ for i in range(len(mydata)):
 # mydata = normalize_data_2(mydata)
 
 	
-# 80% of data is training data and 20% is test data used for testing
-ratio = 0.8
-# mydata = augment_data(mydata)
 
-train_data, test_data = splitting(mydata, ratio) 
-# train_data = augment_data(train_data)
-
-train_data, test_data = normalize_data(train_data, test_data)
-train_data, test_data = apply_pca(train_data, test_data)
-
-
-print('Total number of examples are: ', len(mydata)) 
-print('Out of these, training examples are: ', len(train_data)) 
-print("Test examples are: ", len(test_data)) 
-
-
-print(len(train_data[0]))
-print(len(test_data[0]))
-# train_data = np.concatenate((train_X_np, train_Y_np), axis=1).tolist()
-# test_data = np.concatenate((test_X_np, test_Y_np), axis=1).tolist()
-
-
-# prepare model 
-info = MeanAndStdDevForClass(train_data)
-logBerProb = berProb(train_data)
-
-# test model 
-predictions = getPredictions(info, logBerProb, test_data)
-print(predictions)
-accuracy = accuracy_rate(test_data, predictions) 
-print("Accuracy of your model is: ", accuracy) 
+k_fold_cv(mydata, pca=False)
+k_fold_cv(mydata, pca=True)
+exit()
