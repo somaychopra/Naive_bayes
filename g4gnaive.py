@@ -10,11 +10,39 @@ import sklearn
 from sklearn.model_selection import KFold 
 from sklearn import preprocessing
 from scipy.stats import norm
+import matplotlib.pyplot as plt
 
 
-epsilon = 1e-9
+epsilon = 1e-12
 # the categorical class names are changed to numberic data 
-# eg: yes and no encoded to 1 and 0 
+# eg: yes and no encoded to 1 and 0
+def plot(x, y, save_path, title):
+	# Plot dataset
+    plt.figure()
+    plt.plot(x[y == 0, -2], x[y == 0, -1], 'go', linewidth=2)
+    plt.plot(x[y == 1, -2], x[y == 1, -1], 'bx', linewidth=2)
+
+    # Add labels and save to disk
+    plt.xlabel('1st Feature')
+    plt.ylabel('2nd Feature')
+    plt.legend(['No death', 'Death'])
+    plt.title(title)
+    # plt.show()
+    plt.savefig(save_path)
+    plt.close()
+
+def plot_hist(x, save_path, title) :
+	arr = np.arange(len(x))
+	plt.bar(arr, height=x)
+	xtic = []
+	for i in range(1,len(x)+1) : 
+		xtic.append('{}'.format(i))
+	plt.xticks(arr, xtic)
+	plt.title(title)
+	plt.savefig(save_path)
+	plt.close()
+
+
 def encode_class(mydata): 
 	classes = [] 
 	for i in range(len(mydata)): 
@@ -96,15 +124,22 @@ def calculateGaussianLogProbability(data, mu, sigma) :
 # Calculate Class Probabilities 
 def calculateClassLogProbabilities(info, logBerProb, test): 
 	probabilities = {}
+	to_Remove_Ft_list = []
 	for classValue, classSummaries in info.items(): 
 		probabilities[classValue] = 0
 		for i in range(len(classSummaries)): 
 			mean, std_dev = classSummaries[i]
-			# if(std_dev == 0) :
-				# print("Std_Dev = 0; classValue : {}; examples : {}".format(classValue, i))
+			if(std_dev == 0) :
+				to_Remove_Ft_list.append(i)
+				# print("Std_Dev = 0; classValue : {}; feature number : {}".format(classValue, i))
 			x = test[i]
 			probabilities[classValue] += calculateGaussianLogProbability(x, mean, std_dev)
 		probabilities[classValue] += logBerProb[int(classValue)]
+	to_Remove_Ft_list.sort()
+	theSet= set(to_Remove_Ft_list)
+	to_Remove_Ft_list = list(theSet)
+	# print(len(to_Remove_Ft_list))
+	# exit()
 	# print(probabilities)
 	return probabilities 
 
@@ -177,7 +212,7 @@ def augment_data(mydata) :
 	mydata = mydata_np.tolist()
 	return mydata
 
-def apply_pca(train_data, test_data) :
+def apply_pca(train_data, test_data, count) :
 	train_data_np = np.array(train_data)
 	test_data_np = np.array(test_data)
 
@@ -186,9 +221,6 @@ def apply_pca(train_data, test_data) :
 	test_X_np = test_data_np[:,:-1]
 	test_Y_np = test_data_np[:,-1].reshape((test_data_np.shape[0],1))
 
-	# std = (np.std(train_X_np, axis=0) + epsilon)
-	# train_X_np /= std
-	# test_X_np /= std
 
 	# pca = PCA()
 	pca = PCA(n_components=0.95)
@@ -197,9 +229,14 @@ def apply_pca(train_data, test_data) :
 	test_X_np_pca = pca.transform(test_X_np)
 	# print(test_X_np_pca.shape)
 	# print(train_X_np_pca.shape)
-	# print(pca.explained_variance_ratio_)
+	plot(x=test_X_np_pca[:,:2],y=test_Y_np.reshape(-1),save_path="Projected Features {}.".format(count),title="Projected Features in the first two dimension.")
 	train_data = np.concatenate((train_X_np_pca, train_Y_np), axis=1).tolist()
 	test_data = np.concatenate((test_X_np_pca, test_Y_np), axis=1).tolist()
+
+	pca_plot = PCA()
+	pca_plot.fit_transform(train_X_np)
+	# plot_hist(pca_plot.explained_variance_ratio_, save_path="PCA Graph Explained Variance Ratio", title="Explained Variance Ratio")
+	plot_hist(pca.explained_variance_ratio_, save_path="PCA Graph Explained Variance Ratio of Selected Components {}".format(count), title="Explained Variance Ratio of Selected Components")
 
 	return train_data, test_data
 
@@ -215,13 +252,40 @@ def berProb(train_data) :
 	logBerProb.append(np.log(p))
 	return logBerProb
 
-def k_fold_cv(train_data, pca=False):
+def InbuiltGaussianNb(train_data, test_data) : 
+	from sklearn.naive_bayes import GaussianNB
+	clf = GaussianNB()
+	train_data_np = np.array(train_data)
+	test_data_np = np.array(test_data)
+
+	train_X_np = train_data_np[:,:-1]  
+	train_Y_np = train_data_np[:,-1]
+	test_X_np = test_data_np[:,:-1]
+	test_Y_np = test_data_np[:,-1]
+	clf.fit(train_X_np , train_Y_np)
+	
+	test_y_predicted = clf.predict(test_X_np)
+	tf = [test_y_predicted==test_Y_np]
+	tf = np.array(tf[0])
+	accuracy = np.sum(tf)/tf.shape[0]
+
+	train_y_predicted = clf.predict(train_X_np)
+	tf = [train_y_predicted==train_Y_np]
+	tf = np.array(tf[0])
+	accuracy_train = np.sum(tf)/tf.shape[0]
+
+	return accuracy, accuracy_train
+
+
+def k_fold_cv(train_data, pca=False, use_inbuilt_nb=False):
 	k = 1
 	print("Performing 5 fold cross validation : ")
 	kfold = KFold(5, shuffle=True)
 	avg_accuracy = 0
 	avg_accuracy_train = 0
+	count = 0
 	for train, valid in kfold.split(train_data):
+		count += 1
 		i_fold_train = []
 		i_fold_valid = []
 		for i in train:
@@ -232,16 +296,18 @@ def k_fold_cv(train_data, pca=False):
 		# i_fold_valid = train_data[valid]
 		i_fold_train, i_fold_valid = normalize_data(i_fold_train, i_fold_valid)
 		if pca :
-			i_fold_train, i_fold_valid = apply_pca(i_fold_train, i_fold_valid)
+			i_fold_train, i_fold_valid = apply_pca(i_fold_train, i_fold_valid, count)
 			print("Number of features selected : {}".format(len(i_fold_train[0])-1))
 
-
-		info = MeanAndStdDevForClass(i_fold_train)
-		logBerProb = berProb(i_fold_train)
-		predictions_train = getPredictions(info, logBerProb, i_fold_train) 
-		predictions = getPredictions(info, logBerProb, i_fold_valid) 
-		accuracy_train = accuracy_rate(i_fold_train, predictions_train) 
-		accuracy = accuracy_rate(i_fold_valid, predictions) 
+		if use_inbuilt_nb : 
+			accuracy, accuracy_train = InbuiltGaussianNb(i_fold_train, i_fold_valid)
+		else :
+			info = MeanAndStdDevForClass(i_fold_train)
+			logBerProb = berProb(i_fold_train)
+			predictions_train = getPredictions(info, logBerProb, i_fold_train) 
+			predictions = getPredictions(info, logBerProb, i_fold_valid) 
+			accuracy_train = accuracy_rate(i_fold_train, predictions_train) 
+			accuracy = accuracy_rate(i_fold_valid, predictions) 
 		avg_accuracy += accuracy
 		avg_accuracy_train += accuracy_train 
 		print("Accuracy on validation set on",k,"th fold is: ",accuracy)
@@ -257,7 +323,7 @@ def k_fold_cv(train_data, pca=False):
 # driver code 
 # add the data path in your system 
 filename = r'after_prepoc.csv'
-
+use_inbuilt_nb = False
 
 # load the file and store it in mydata list 
 mydata = csv.reader(open(filename, "rt")) 
@@ -269,6 +335,6 @@ for i in range(len(mydata)):
 
 	
 
-k_fold_cv(mydata, pca=False)
-k_fold_cv(mydata, pca=True)
+k_fold_cv(mydata, pca=False, use_inbuilt_nb=use_inbuilt_nb)
+k_fold_cv(mydata, pca=True, use_inbuilt_nb=use_inbuilt_nb)
 exit()
